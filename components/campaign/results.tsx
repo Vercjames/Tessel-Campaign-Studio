@@ -4,7 +4,7 @@ import { Button, buttonVariants } from "@comps/ui/button"
 import type { IGenerationJob } from "@utils/brief/jobs"
 import type { IJobState, IRun } from "@utils/client/run-jobs"
 import JSZip from "jszip"
-import { AlertCircle, ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, Sparkles } from "lucide-react"
+import { AlertCircle, ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, RotateCcw, Sparkles } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
@@ -85,7 +85,7 @@ function formatStarted(ms: number): string {
   return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
 }
 
-function ResultTile({ job, state, runId }: IResultTileProps) {
+function ResultTile({ job, state, runId, onResubmit, busy }: IResultTileProps) {
   const status = state?.status ?? "queued"
   const ratio = ratioValue(job.aspectRatio)
   const width = Math.round(TILE_HEIGHT * ratio)
@@ -112,6 +112,20 @@ function ResultTile({ job, state, runId }: IResultTileProps) {
         <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-destructive">
           <AlertCircle className="size-5" />
           <span className="line-clamp-4 text-xs leading-snug">{state?.error}</span>
+          {onResubmit ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="mt-1 text-foreground"
+              disabled={busy}
+              onClick={() => onResubmit(runId, job)}
+              title={state?.code === "timeout" ? "The model timed out; the same job is sent again" : "Send this job again"}
+            >
+              <RotateCcw data-icon="inline-start" />
+              Resubmit
+            </Button>
+          ) : null}
         </div>
       ) : (
         <div className="flex size-full flex-col items-center justify-center gap-2 text-muted-foreground/70">
@@ -222,7 +236,7 @@ function Strip({ children }: { children: React.ReactNode }) {
   )
 }
 
-function RunResults({ run, latest }: IRunResultsProps) {
+function RunResults({ run, latest, onResubmit, busy }: IRunResultsProps) {
   const done = countStatus(run.jobs, run.states, "done")
   const failed = countStatus(run.jobs, run.states, "error")
   const [zipping, setZipping] = useState(false)
@@ -264,7 +278,7 @@ function RunResults({ run, latest }: IRunResultsProps) {
       </div>
       <Strip>
         {run.jobs.map((job) => (
-          <ResultTile key={job.id} job={job} state={run.states[job.id]} runId={run.id} />
+          <ResultTile key={job.id} job={job} state={run.states[job.id]} runId={run.id} onResubmit={onResubmit} busy={busy} />
         ))}
       </Strip>
     </section>
@@ -274,11 +288,11 @@ function RunResults({ run, latest }: IRunResultsProps) {
 // Application Component || Define Exports
 // =======================================================================================
 // =======================================================================================
-export function Results({ runs }: IResultsProps) {
+export function Results({ runs, onResubmit, busy }: IResultsProps) {
   return (
     <div className="space-y-12">
       {runs.map((run, i) => (
-        <RunResults key={run.id} run={run} latest={i === 0} />
+        <RunResults key={run.id} run={run} latest={i === 0} onResubmit={onResubmit} busy={busy} />
       ))}
     </div>
   )
@@ -287,17 +301,25 @@ export function Results({ runs }: IResultsProps) {
 // Application Component || Define Typologies
 // =======================================================================================
 // =======================================================================================
+type TResubmit = (runId: string, job: IGenerationJob) => void
+
 interface IResultsProps {
   runs: IRun[]
+  onResubmit?: TResubmit
+  busy?: boolean
 }
 
 interface IRunResultsProps {
   run: IRun
   latest: boolean
+  onResubmit?: TResubmit
+  busy?: boolean
 }
 
 interface IResultTileProps {
   job: IGenerationJob
   state: IJobState | undefined
   runId: string
+  onResubmit?: TResubmit
+  busy?: boolean
 }

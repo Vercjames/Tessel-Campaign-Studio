@@ -93,14 +93,16 @@ export async function runJobs(briefsById: Map<string, TCampaignBrief>, jobs: IGe
         continue
       }
 
+      // NOTE: A resubmitted variant finds its parent in the seed, the finished results of the run it belongs to
       let masterPath: string | undefined
       if (job.masterId) {
         const pending = results.get(job.masterId)
-        if (!pending) {
+        const seeded = opts.seed?.[job.masterId]
+        if (!pending && !seeded) {
           fail(job, "Parent image is not part of this run")
           continue
         }
-        const parent = await pending
+        const parent = pending ? await pending : seeded
         if (opts.signal?.aborted) return
         if (!parent) {
           fail(job, "Parent image failed, so this variant was skipped")
@@ -159,5 +161,6 @@ interface IRunOptions {
   concurrency?: number
   runId: string
   signal?: AbortSignal
+  seed?: Record<string, IGenerateResponse>
   onUpdate: (state: IJobState) => void
 }

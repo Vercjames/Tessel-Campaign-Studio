@@ -1,7 +1,7 @@
 import "server-only"
 import { GoogleGenAI, type Part } from "@google/genai"
-
 import type { TAspectRatio } from "@utils/brief/schema"
+import sharp from "sharp"
 
 // Application Architecture || Define Vars
 // =======================================================================================
@@ -9,6 +9,14 @@ import type { TAspectRatio } from "@utils/brief/schema"
 // NOTE: gemini-2.5-flash-image accepts reference images alongside the prompt and returns an image
 // ↪ HOWEVER: GEMINI_IMAGE_MODEL can point at a newer image model with the same contract
 const DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"
+
+// NOTE: The model works at roughly 1K, so references are downscaled to this long side and re-encoded before upload
+// ↪ ERGO: A 2.5 MB PNG becomes a few hundred KB, which keeps the request under Google's processing deadline
+const REFERENCE_MAX_SIDE = 1536
+
+// NOTE: Sent to Google as X-Server-Timeout, so it extends the server-side deadline that image renders can exceed
+// ↪ HOWEVER: It is per attempt; keep it well under the route's maxDuration so a retry still fits
+const DEFAULT_TIMEOUT_MS = 120_000
 
 let client: GoogleGenAI | null = null
 
@@ -20,7 +28,7 @@ function getClient(): GoogleGenAI {
   if (!apiKey) {
     throw new GeminiError("GEMINI_API_KEY is not set. Add it to .env.local and restart the dev server.", 503)
   }
-  if (!client) client = new GoogleGenAI({ apiKey })
+  if (!client) client = new GoogleGenAI({ apiKey, httpOptions: { timeout: requestTimeoutMs() } })
   return client
 }
 
@@ -56,6 +64,21 @@ function statusFromError(err: unknown): number {
   return 502
 }
 
+// NOTE: Photos go as JPEG; anything with transparency (a logo) stays PNG so its alpha survives
+async function shrinkReference(ref: IReferenceImage): Promise<IReferenceImage> {
+  try {
+    const image = sharp(ref.data)
+    const meta = await image.metadata()
+    const long = Math.max(meta.width ?? 0, meta.height ?? 0)
+    const resized =
+      long > REFERENCE_MAX_SIDE ? image.resize({ width: REFERENCE_MAX_SIDE, height: REFERENCE_MAX_SIDE, fit: "inside" }) : image
+    if (meta.hasAlpha) return { ...ref, mimeType: "image/png", data: await resized.png().toBuffer() }
+    return { ...ref, mimeType: "image/jpeg", data: await resized.jpeg({ quality: 92 }).toBuffer() }
+  } catch {
+    return ref
+  }
+}
+
 // Application Architecture || Define Exports
 // =======================================================================================
 // =======================================================================================
@@ -65,6 +88,16 @@ export class GeminiError extends Error {
     super(message)
     this.status = status
   }
+}
+
+// NOTE: Google's deadline errors mean the request was healthy but slow; the front end offers a resubmit for these
+export function isTimeout(err: GeminiError): boolean {
+  return err.status === 504 || err.status === 408 || /deadline|timed out|timeout/i.test(err.message)
+}
+
+export function requestTimeoutMs(): number {
+  const raw = Number(process.env.GEMINI_TIMEOUT_MS)
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : DEFAULT_TIMEOUT_MS
 }
 
 export function imageModel(): string {
@@ -85,16 +118,16 @@ export async function generateCampaignImage(input: IGenerateImageInput): Promise
   const model = imageModel()
 
   const parts: Part[] = [{ text: input.prompt }]
-  input.references.forEach((ref, i) => {
+  const references = await Promise.all(input.references.map(shrinkReference))
+  references.forEach((ref, i) => {
     parts.push({ text: `Image ${i + 1}: ${ref.label}` })
     parts.push({
       inlineData: { mimeType: ref.mimeType, data: ref.data.toString("base64") },
     })
   })
 
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>>
-  try {
-    response = await ai.models.generateContent({
+  const call = () =>
+    ai.models.generateContent({
       model,
       contents: [{ role: "user", parts }],
       config: {
@@ -104,6 +137,11 @@ export async function generateCampaignImage(input: IGenerateImageInput): Promise
         abortSignal: input.signal,
       },
     })
+
+  // NOTE: The SDK already retries 408, 429 and 5xx up to five attempts with backoff, so no second layer here
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>>
+  try {
+    response = await call()
   } catch (err) {
     throw new GeminiError(describeError(err), statusFromError(err))
   }

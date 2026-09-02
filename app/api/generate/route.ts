@@ -3,14 +3,13 @@ import { assetsForBrief, jobId as buildJobId, campaignSlug, masterVariant } from
 import { checkLegal, describeLegalIssues, extraLegalTerms } from "@utils/brief/legal"
 import { validateBrief } from "@utils/brief/parse"
 import { buildPrompt } from "@utils/brief/prompt"
-import { describeBands } from "@utils/brief/reframe"
 import { ASPECT_RATIOS } from "@utils/brief/schema"
 import { AssetError, type ILoadedAsset, loadAsset } from "@utils/server/assets"
 import { overlayLogo } from "@utils/server/compose"
-import { GeminiError, generateCampaignImage, imageModel } from "@utils/server/gemini"
+import { GeminiError, generateCampaignImage, imageModel, isTimeout } from "@utils/server/gemini"
 import { type IOutputRef, rawOutputPath, readOutput, saveOutput, saveOutputMeta, saveRawOutput } from "@utils/server/outputs"
-import { cropMaster, padMaster, planFor, restoreMaster } from "@utils/server/reframe"
 import { NextResponse } from "next/server"
+import sharp from "sharp"
 import { z } from "zod"
 
 // Application Architecture || Define Vars
@@ -18,7 +17,8 @@ import { z } from "zod"
 // =======================================================================================
 export const runtime = "nodejs"
 
-export const maxDuration = 120
+// NOTE: Two Gemini attempts of GEMINI_TIMEOUT_MS each must fit; 300 s is the Vercel ceiling on Hobby and Pro with Fluid compute
+export const maxDuration = 300
 
 // Application Component || Define Configs
 // =======================================================================================
@@ -36,6 +36,16 @@ const RequestSchema = z.object({
 // =======================================================================================
 function error(message: string, status: number, details?: unknown, code?: TApiErrorCode) {
   return NextResponse.json<IApiError>({ error: message, code, details }, { status })
+}
+
+// NOTE: Aspect check with a small tolerance, since the model rounds to its own pixel grid
+async function matchesRatio(data: Buffer, aspectRatio: string): Promise<boolean> {
+  const [w, h] = aspectRatio.split(":").map(Number)
+  const meta = await sharp(data).metadata()
+  if (!meta.width || !meta.height) return false
+  const actual = meta.width / meta.height
+  const wanted = w / h
+  return Math.abs(actual - wanted) / wanted <= 0.03
 }
 
 // NOTE: Derived jobs read the parent's raw render (before the corner mark) so nothing is stamped twice
@@ -165,43 +175,20 @@ export async function POST(req: Request) {
   }
 
   try {
-    // NOTE: Ratio variants never regenerate the picture; they crop or extend the parent's pixels
-    if (derivation === "ratio" && parent) {
-      const plan = await planFor(parent.data, body.aspectRatio)
-      if (plan.mode === "crop") {
-        const cropped = await cropMaster(parent.data, plan)
-        return finish(
-          cropped,
-          "image/png",
-          `Cropped from ${parent.relPath} to ${body.aspectRatio}; no generation.`,
-          null,
-          [],
-          "Cropped from the parent image",
-        )
-      }
-      const canvas = await padMaster(parent.data, plan)
-      const prompt = buildPrompt(effectiveBrief, body.locale, body.aspectRatio, {
-        name: parent.relPath,
-        locale: body.locale,
-        aspectRatio: master.aspectRatio,
-        mode: "extend",
-        bands: describeBands(plan),
-      })
-      const image = await generateCampaignImage({
-        prompt: prompt.text,
-        aspectRatio: body.aspectRatio,
-        references: [{ label: "canvas: the approved image centered on the new frame", mimeType: "image/png", data: canvas }],
-        signal: req.signal,
-      })
-      const restored = await restoreMaster(image.data, parent.data, plan)
-      return finish(restored, "image/png", prompt.text, prompt.headline, [], image.text ?? "Extended from the parent image")
-    }
-
+    // NOTE: Locale variants keep the master's picture and change the wording; ratio variants re-compose it for the frame
+    // ↪ ERGO: Nothing is ever cropped or padded, so no text or product can end up cut off or displaced
     const prompt = buildPrompt(
       effectiveBrief,
       body.locale,
       body.aspectRatio,
-      parent ? { name: parent.relPath, locale: master.locale, aspectRatio: master.aspectRatio, mode: "locale" } : undefined,
+      parent
+        ? {
+            name: parent.relPath,
+            locale: master.locale,
+            aspectRatio: master.aspectRatio,
+            mode: derivation === "locale" ? "locale" : "reframe",
+          }
+        : undefined,
     )
     const inputs = prompt.references.map((ref) => {
       if (ref.role === "master") {
@@ -218,12 +205,21 @@ export async function POST(req: Request) {
       if (!asset) throw new Error(`asset ${ref.name} vanished`)
       return { name: asset.name, label: `${ref.role}: ${ref.name}`, mimeType: asset.mimeType, data: asset.data, library: true }
     })
-    const image = await generateCampaignImage({
-      prompt: prompt.text,
-      aspectRatio: body.aspectRatio,
-      references: inputs.map((i) => ({ label: i.label, mimeType: i.mimeType, data: i.data })),
-      signal: req.signal,
-    })
+    const generate = () =>
+      generateCampaignImage({
+        prompt: prompt.text,
+        aspectRatio: body.aspectRatio,
+        references: inputs.map((i) => ({ label: i.label, mimeType: i.mimeType, data: i.data })),
+        signal: req.signal,
+      })
+    let image = await generate()
+    // NOTE: A re-composition that comes back in the master's frame instead of the requested one is retried once
+    if (derivation === "ratio" && !(await matchesRatio(image.data, body.aspectRatio))) {
+      image = await generate()
+      if (!(await matchesRatio(image.data, body.aspectRatio))) {
+        throw new GeminiError(`The model returned the wrong frame for ${body.aspectRatio} twice; try again`, 502)
+      }
+    }
     return finish(
       image.data,
       image.mimeType,
@@ -233,7 +229,10 @@ export async function POST(req: Request) {
       image.text,
     )
   } catch (err) {
-    if (err instanceof GeminiError) return error(err.message, err.status)
+    if (err instanceof GeminiError) {
+      if (isTimeout(err)) return error("Gemini timed out before the image was ready. Resubmit to try again.", 504, undefined, "timeout")
+      return error(err.message, err.status)
+    }
     // NOTE: Logged so hosted runtime logs show the cause, not just the 500
     console.error(`[generate] ${jobId}`, err)
     return error(err instanceof Error ? err.message : "Generation failed", 500)

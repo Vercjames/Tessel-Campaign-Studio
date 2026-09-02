@@ -2,7 +2,6 @@ import { briefToDraft, draftToInput, emptyDraft, validateDraft } from "@utils/br
 import { assetsForBrief, expandJobs } from "@utils/brief/jobs"
 import { parseBriefs, slugify } from "@utils/brief/parse"
 import { buildPrompt, colorName, resolveHeadline } from "@utils/brief/prompt"
-import { planReframe } from "@utils/brief/reframe"
 import { briefJsonSchema } from "@utils/brief/schema"
 import { describe, expect, it } from "vitest"
 
@@ -253,22 +252,22 @@ describe("buildPrompt", () => {
     expect(buildPrompt(brief, "en", "1:1").text).toContain("Render no text at all")
   })
 
-  it("locale variants keep the master and extend variants only paint the bands", () => {
+  it("locale variants keep the master and ratio variants re-compose it", () => {
     const brief = mustParse(fullYaml)
     const locale = buildPrompt(brief, "es", "16:9", { name: "m.png", locale: "en", aspectRatio: "16:9", mode: "locale" })
     expect(locale.references[0]).toEqual({ name: "m.png", role: "master", roles: [], item: null })
     expect(locale.text).toContain("Only change the message wording for locale es")
-    const extend = buildPrompt(brief, "en", "1:1", {
-      name: "m.png",
-      locale: "en",
-      aspectRatio: "16:9",
-      mode: "extend",
-      bands: "top and bottom",
-    })
-    expect(extend.references).toEqual([{ name: "m.png", role: "master", roles: [], item: null }])
-    expect(extend.text).toContain("blank bands on the top and bottom")
-    expect(extend.text).toContain("Do not alter anything inside the existing picture")
-    expect(extend.text).not.toContain("Feature")
+    expect(locale.text).not.toContain("Re-compose")
+    const reframe = buildPrompt(brief, "en", "1:1", { name: "m.png", locale: "en", aspectRatio: "16:9", mode: "reframe" })
+    expect(reframe.references).toEqual([{ name: "m.png", role: "master", roles: [], item: null }])
+    expect(reframe.text).toContain("The master is 16:9")
+    expect(reframe.text).toContain("exactly once")
+    expect(reframe.text).not.toContain("Apply image")
+    expect(reframe.text).toContain("Re-compose it for 1:1")
+    expect(reframe.text).toContain("cut off")
+    expect(reframe.text).toContain("Feature")
+    expect(reframe.text).not.toContain("blank bands")
+    expect(reframe.text).not.toContain("Only change the message wording")
   })
 
   it("is deterministic", () => {
@@ -306,20 +305,6 @@ describe("drafts", () => {
     if (v.ok) return
     expect(v.issues.map((i) => i.path)).toContain("products[0].name")
     expect((draftToInput(draft) as { brand?: unknown }).brand).toBeUndefined()
-  })
-})
-
-describe("planReframe", () => {
-  it("crops when the target ratio is close and extends when it is far", () => {
-    const crop = planReframe(1600, 900, "3:2")
-    expect(crop.mode).toBe("crop")
-    expect([crop.canvasWidth, crop.canvasHeight, crop.offsetX, crop.offsetY]).toEqual([1350, 900, 125, 0])
-    const extend = planReframe(1600, 900, "1:1")
-    expect(extend.mode).toBe("extend")
-    expect([extend.canvasWidth, extend.canvasHeight, extend.offsetX, extend.offsetY]).toEqual([1600, 1600, 0, 350])
-    const wider = planReframe(1024, 1024, "21:9")
-    expect(wider.mode).toBe("extend")
-    expect([wider.canvasWidth, wider.canvasHeight, wider.offsetX]).toEqual([2389, 1024, 683])
   })
 })
 

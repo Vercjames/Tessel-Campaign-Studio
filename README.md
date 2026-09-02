@@ -11,6 +11,7 @@ Brief in, campaign images out. Load a JSON/YAML brief, add a logo and reference 
   - [Live App](http://localhost:3000)
 - **Production**
   - [Live App](https://tessel-campaign-studio.vercel.app/)
+  - [Video Guide](https://www.youtube.com/watch?v=TODO)
 
 ---
 
@@ -152,7 +153,7 @@ Each result also has a review page at `/results/...`.
 ## 🧭 **Key Design Decisions**
 
 - One brief, one picture. Products are composed together, not rendered separately.
-- The first locale at the first ratio is the master. Other locales re-render with the master attached and only the text changes. Other ratios crop or pad the master; the model only paints the new bands.
+- The first locale at the first ratio is the master. Other locales re-render with the master attached and only the text changes. Other ratios are regenerated with the master attached, so the composition adapts to the frame and nothing is cropped or padded.
 - The logo is composited from the file with sharp, never drawn by the model.
 - The form and the YAML are the same thing. Anything set in the UI exports back out.
 - Legal check runs in the API route. Every text field is scanned for profanity; a hit gets a 422 before anything is generated. `LEGAL_BLOCKLIST` in `.env.local` adds words.

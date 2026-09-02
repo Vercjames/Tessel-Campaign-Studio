@@ -9,7 +9,7 @@ import { Button, buttonVariants } from "@comps/ui/button"
 import { Progress } from "@comps/ui/progress"
 import { Separator } from "@comps/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@comps/ui/tabs"
-import type { IAssetSummary, IAssetsListResponse, IHealthResponse, IOutputsListResponse } from "@utils/api-types"
+import type { IAssetSummary, IAssetsListResponse, IGenerateResponse, IHealthResponse, IOutputsListResponse } from "@utils/api-types"
 import { briefToDraft, emptyDraft, type ICampaignDraft, validateDraft } from "@utils/brief/draft"
 import { expandJobs, type IGenerationJob } from "@utils/brief/jobs"
 import { type IParseIssue, parseBriefs } from "@utils/brief/parse"
@@ -159,7 +159,7 @@ export function CampaignStudio({ health }: ICampaignStudioProps) {
     setTab("campaign")
   }
 
-  async function dispatch(brief: TCampaignBrief, only?: IGenerationJob[]) {
+  async function dispatch(brief: TCampaignBrief, only?: IGenerationJob[], resume?: IResume) {
     if (!health.geminiConfigured) {
       toast.error("GEMINI_API_KEY is not set. Add it to .env.local and restart.")
       return
@@ -171,16 +171,13 @@ export function CampaignStudio({ health }: ICampaignStudioProps) {
 
     const controller = new AbortController()
     abortRef.current = controller
-    const runId = newRunId()
-    const run: IRun = {
-      id: runId,
-      startedAt: Date.now(),
-      jobs,
-      states: Object.fromEntries(jobs.map((j) => [j.id, { job: j, status: "queued" } satisfies IJobState])),
-    }
+    const runId = resume?.runId ?? newRunId()
+    const queued = Object.fromEntries(jobs.map((j) => [j.id, { job: j, status: "queued" } satisfies IJobState]))
     setRunning(true)
     setTab("results")
-    setRuns((prev) => [run, ...prev])
+    // NOTE: A resubmit re-queues the failed tiles inside their own run, so the run id and file names stay put
+    if (resume) setRuns((prev) => prev.map((r) => (r.id === runId ? { ...r, states: { ...r.states, ...queued } } : r)))
+    else setRuns((prev) => [{ id: runId, startedAt: Date.now(), jobs, states: queued } satisfies IRun, ...prev])
     // NOTE: A legal rejection applies to the whole brief, so the run stops on the first one and is reported once
     let legalReported = false
     const update = (s: IJobState) => {
@@ -197,12 +194,36 @@ export function CampaignStudio({ health }: ICampaignStudioProps) {
         concurrency: 3,
         runId,
         signal: controller.signal,
+        seed: resume?.seed,
         onUpdate: update,
       })
     } finally {
       setRunning(false)
       abortRef.current = null
     }
+  }
+
+  // NOTE: Resubmits the failed job plus any failed variant that descends from it, with finished parents as seed
+  function resubmit(runId: string, job: IGenerationJob) {
+    const run = runs.find((r) => r.id === runId)
+    if (!run) return
+    if (!validation?.ok) {
+      toast.error("Fix the highlighted fields first.")
+      return
+    }
+    const byId = new Map(run.jobs.map((j) => [j.id, j]))
+    const descendsFrom = (candidate: IGenerationJob) => {
+      let current: IGenerationJob | undefined = candidate
+      while (current?.masterId) {
+        if (current.masterId === job.id) return true
+        current = byId.get(current.masterId)
+      }
+      return false
+    }
+    const jobs = run.jobs.filter((j) => j.id === job.id || (run.states[j.id]?.status === "error" && descendsFrom(j)))
+    const seed: Record<string, IGenerateResponse> = {}
+    for (const s of Object.values(run.states)) if (s.status === "done" && s.result) seed[s.job.id] = s.result
+    void dispatch(validation.brief, jobs, { runId, seed })
   }
 
   function generate() {
@@ -368,7 +389,7 @@ export function CampaignStudio({ health }: ICampaignStudioProps) {
                       </div>
                       <Progress value={progress} />
                     </div>
-                    <Results runs={runs} />
+                    <Results runs={runs} onResubmit={resubmit} busy={running} />
                   </section>
                 </TabsContent>
               </Tabs>
@@ -394,4 +415,9 @@ interface ICampaignStudioProps {
 interface IParseFailure {
   source: string
   issues: IParseIssue[]
+}
+
+interface IResume {
+  runId: string
+  seed: Record<string, IGenerateResponse>
 }

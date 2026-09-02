@@ -66,4 +66,4 @@ export interface IApiError {
   details?: unknown
 }
 
-export type TApiErrorCode = "legal"
+export type TApiErrorCode = "legal" | "timeout"

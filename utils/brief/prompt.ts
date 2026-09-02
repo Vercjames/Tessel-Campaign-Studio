@@ -132,7 +132,7 @@ function describeRoles(roles: TReferenceRole[]): string {
 }
 
 // NOTE: Deterministic for a given brief; every item is composed into one scene
-// ↪ CONTEXT: "locale" reuses the master picture with new wording; "extend" only paints the blank bands of a padded canvas
+// ↪ CONTEXT: "locale" reuses the master picture with new wording; "reframe" re-composes it for another aspect ratio
 export function buildPrompt(brief: TCampaignBrief, locale: string, aspectRatio: TAspectRatio, master?: IMasterReference): IBuiltPrompt {
   const headline = resolveHeadline(brief)
   const campaignName = brief.name?.trim() || "campaign"
@@ -144,27 +144,16 @@ export function buildPrompt(brief: TCampaignBrief, locale: string, aspectRatio: 
   const onProducts = Boolean(logo) && brief.logoPlacement.includes("product")
   const inCorner = Boolean(logo) && brief.logoPlacement.includes("corner")
 
-  // NOTE: Extending sends only the padded canvas; no product references, so nothing inside the picture is re-imagined
-  if (master?.mode === "extend") {
-    const lines = [
-      `Image 1 is the approved "${campaignName}" campaign image placed in the center of a larger ${aspectRatio} (${FORMAT_HINTS[aspectRatio]}) canvas, with blank bands on the ${master.bands ?? "edges"}.`,
-      "Paint only those blank bands so the scene continues seamlessly: extend the floor, walls, ceiling, furniture, light and depth of field exactly as they behave in the picture.",
-      "Do not alter anything inside the existing picture: the same products at the same angles and scale, the same lighting, the same message in the same typeface and position. Add no new subjects, text or marks anywhere.",
-    ]
-    if (composition.length > 0) {
-      lines.push(`For reference, the scene is: ${composition.map((p) => `${p.name}: ${p.description}`).join("; ")}.`)
-    }
-    if (inCorner) lines.push(`Keep the ${corner} corner of the new frame clear; the brand mark is placed there afterwards.`)
-    lines.push("Before finishing, confirm: the original picture is unchanged and the new bands join it without a visible seam.")
-    return { text: lines.join("\n"), references: [{ name: master.name, role: "master", roles: [], item: null }], headline }
-  }
-
+  // NOTE: A re-composition attaches only the master; product and logo references would invite a second scene or a duplicate
+  const reframe = master?.mode === "reframe"
   const references: IReferenceLabel[] = []
   if (master) references.push({ name: master.name, role: "master", roles: [], item: null })
-  if (logo && onProducts) references.push({ name: logo, role: "logo", roles: [], item: null })
-  for (const item of brief.products) {
-    for (const r of item.referenceImages ?? []) {
-      references.push({ name: r.file, role: `${describeRoles(r.roles)} for ${item.name}`, roles: r.roles, item: item.name })
+  if (logo && onProducts && !reframe) references.push({ name: logo, role: "logo", roles: [], item: null })
+  if (!reframe) {
+    for (const item of brief.products) {
+      for (const r of item.referenceImages ?? []) {
+        references.push({ name: r.file, role: `${describeRoles(r.roles)} for ${item.name}`, roles: r.roles, item: item.name })
+      }
     }
   }
 
@@ -176,6 +165,14 @@ export function buildPrompt(brief: TCampaignBrief, locale: string, aspectRatio: 
     lines.push(
       "Image 1 is the approved master image for this campaign. Reproduce it faithfully: the same scene, subjects, props, lighting, colors, composition and mood, so the result reads as the same photograph.",
     )
+    if (master.mode === "reframe") {
+      lines.push(
+        `The master is ${master.aspectRatio} (${FORMAT_HINTS[master.aspectRatio]}). Re-compose it for ${aspectRatio} (${FORMAT_HINTS[aspectRatio]}) the way a designer adapts one creative to a new format.`,
+        "Keep every product at the same angle, scale relationship, materials and lighting, and keep the message in the same wording, typeface, weight and color. Reveal more of the scene in the new direction rather than cropping; nothing from the master may be cut off or pushed out of frame.",
+        "Move the message and products only as far as the new frame requires, keeping the message fully inside the frame with generous margins and in clear space.",
+        "Render one continuous scene in a single frame: no split panels, collage, borders or insets, and each product appears exactly once, as it does in the master.",
+      )
+    }
     if (master.locale !== locale && headline) {
       lines.push(
         `Only change the message wording for locale ${locale}; keep its typeface, weight, color, size and position as in the master.`,
@@ -227,7 +224,7 @@ export function buildPrompt(brief: TCampaignBrief, locale: string, aspectRatio: 
   if (references.length > 0) {
     const attached = references.map((r, i) => `image ${i + 1} is the ${r.role} (${r.name})`).join("; ")
     lines.push(`Attached references: ${attached}.`)
-    if (logo && onProducts) {
+    if (logo && onProducts && !reframe) {
       const logoIndex = references.findIndex((r) => r.role === "logo") + 1
       lines.push(
         `Apply image ${logoIndex}, the logo, onto every featured product: ${subjectNames}. Each of these products must carry it once, as a printed or embossed brand mark on its main visible surface, sized like a real product logo (roughly a fifth of the product's width).`,
@@ -275,6 +272,5 @@ interface IMasterReference {
   name: string
   locale: string
   aspectRatio: TAspectRatio
-  mode: "locale" | "extend"
-  bands?: string
+  mode: "locale" | "reframe"
 }
