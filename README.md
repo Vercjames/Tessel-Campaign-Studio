@@ -11,7 +11,7 @@ Brief in, campaign images out. Load a JSON/YAML brief, add a logo and reference 
   - [Live App](http://localhost:3000)
 - **Production**
   - [Live App](https://tessel-campaign-studio.vercel.app/)
-  - [Video Guide](https://www.youtube.com/watch?v=TODO)
+  - [Video Guide](https://youtu.be/39v3-N8aLTo)
 
 ---
 
