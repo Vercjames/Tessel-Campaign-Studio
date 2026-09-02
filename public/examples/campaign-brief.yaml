@@ -1,0 +1,38 @@
+campaign: Summer Fitness Program
+id: summer-fitness
+region: Southwest US
+audience: Active adults 25–40 seeking a summer fitness program
+message: Find out how to get started.
+locales: [en]
+aspectRatio: ["16:9", "1:1"]
+
+brand:
+  logo: tessel-logo.png
+  colors:
+    primary: "#0E7C86"
+    secondary: "#F4F1EA"
+    tone: "#F59E0B"
+logoPlacement: [corner]
+logoPosition: bottom-right
+
+avoid: no faces, no people. no extra text beyond the message
+
+products:
+  - id: towel
+    name: Gym Towel
+    kind: product
+    description: A folded charcoal microfiber towel with a woven teal edge, draped over a bench
+
+  - id: water-bottle
+    name: Water Bottle
+    kind: product
+    description: Our member only matte black insulated bottle with a bamboo cap
+    referenceImages: [modern-waterbottle.png]
+
+  - id: gym
+    name: Modern gym
+    kind: composition
+    description: Bright modern gym floor at golden hour, polished concrete, soft haze
+    referenceImages:
+      - file: modern-gym.png
+        roles: [background, atmosphere]

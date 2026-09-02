@@ -1,41 +1,262 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+## See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+## =======================================================================================
+## =======================================================================================
+# generated campaign images
+/storage/
 
-# dependencies
+## Application Ignores || Env Variables
+## =======================================================================================
+## =======================================================================================
+.env
+
+## Application Ignores || Build Excludes
+## =======================================================================================
+## =======================================================================================
+out
+out/
+/out
+/out/
+.out
+.out/
+/.out
+/.out/
+
+dist
+dist/
+/dist
+/dist/
+.dist
+.dist/
+/.dist
+/.dist/
+
+build
+build/
+/build
+/build/
+.build
+.build/
+/.build
+/.build/
+
+output
+output/
+/output
+/output/
+.output
+.output/
+/.output
+/.output/
+
+## Application Ignores || Package Directories
+## =======================================================================================
+## =======================================================================================
+typings
+typings/
+coverage
+coverage/
+/coverage
+/coverage/
+certificates
+certificates/
+/certificates
+/certificates/
+node_modules
+node_modules/
 /node_modules
+/node_modules/
+jspm_packages
+jspm_packages/
+/jspm_packages
+/jspm_packages/
+
+## Application Ignores || Bundle Excludes
+## =======================================================================================
+## =======================================================================================
+.next
+.next/
+/.next
+/.next/
+.nuxt
+.nuxt/
+/.nuxt
+/.nuxt/
+.nitro
+.nitro/
+/.nitro
+/.nitro/
+.vercel
+.vercel/
+/.vercel
+/.vercel/
+.serverless
+.serverless/
+/.serverless
+/.serverless/
+.turbo
+.turbo/
+/.turbo
+/.turbo/
+
+## Application Ignores || Editor Cache
+## =======================================================================================
+## =======================================================================================
+.pnp
 /.pnp
-.pnp.*
+.pnp.js
+.idea
+.init
+.swc
+.fleet
+.grunt
+.vscode
+.parcel-cache
+.eslintcache
+.stylelintcache
+
+## Application Ignores || Generated Files
+## =======================================================================================
+## =======================================================================================
+._*
+.Trashes
+.DS_Store
+.Spotlight-V100
+Thumbs.db
+dist-ssr
+
+## Application Ignores || Diagnostic Reports
+## =======================================================================================
+## =======================================================================================
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+## Application Ignores || Log Files
+## =======================================================================================
+## =======================================================================================
+logs
+*.log
+
+.npm
+/.npm
+npm.log*
+.npm.log*
+npm-debug.*
+.npm-debug.log*
+npm-debug.log*
+npm-error.*
+.npm-error.log*
+npm-error.log*
+
+yarn.log*
+.yarn.log*
+yarn-debug.*
+yarn-debug.log*
+.yarn-debug.log*
+yarn-error.*
+.yarn-error.log*
+yarn-error.log*
+
+
+.yarn
+/.yarn
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
+pnpm.log*
+.pnpm.log*
+pnpm-debug.*
+pnpm-debug.log*
+.pnpm-debug.log*
+pnpm-error.*
+pnpm-error.log*
+.pnpm-error.log*
 
-# next.js
-/.next/
-/out/
+lerna.log*
+.lerna.log*
+lerna-debug.*
+lerna-debug.log*
+.lerna-debug.log*
+lerna-eror.*
+lerna-error.log*
+.lerna-error.log*
 
-# production
-/build
+bun.log*
+.bun.log*
+bun-debug.*
+bun-debug.log*
+.bun-debug.log*
+bun-error.*
+bun-error.log*
+.bun-error.log*
 
-# misc
-.DS_Store
+storybook.log*
+.storybook.log*
+storybook-debug.*
+storybook-debug.log*
+.storybook-debug.log*
+storybook-error.*
+storybook-error.log*
+.storybook-error.log*
+
+## Application Ignores || Runtime data
+## =======================================================================================
+## =======================================================================================
+pids
+*.pid
+*.seed
+*.pid.lock
 *.pem
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
+## Application Ignores || Typescript Files
+## =======================================================================================
+## =======================================================================================
 *.tsbuildinfo
 next-env.d.ts
+
+## Application Ignores || Lint & Cache Files
+## =======================================================================================
+## =======================================================================================
+.cache
+eslintcache
+stylelintcache
+
+## Application Ignores || Expo Files
+## =======================================================================================
+## =======================================================================================
+.expo
+.expo/
+expo-env.d.ts
+.metro-health-check*
+web-build
+web-build/
+android
+android/
+/android
+/android/
+ios
+ios/
+/ios
+/ios/
+
+## Application Ignores || Native Files
+## =======================================================================================
+## =======================================================================================
+.kotlin
+*.mobileprovision
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+
+## Application Ignores || Erroneous files
+## =======================================================================================
+## =======================================================================================
+.secrets.com
+*.njsproj
+*.ntvs*
+*.tgz
+*.sln
+*.sw?

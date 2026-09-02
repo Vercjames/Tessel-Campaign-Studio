@@ -1,7 +1,11 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from "next"
 
-const nextConfig: NextConfig = {
-  /* config options here */
-};
+// Application Component || Define Configs
+// =======================================================================================
+// =======================================================================================
+const nextConfig: NextConfig = {}
 
-export default nextConfig;
+// Application Architecture || Define Exports
+// =======================================================================================
+// =======================================================================================
+export default nextConfig
