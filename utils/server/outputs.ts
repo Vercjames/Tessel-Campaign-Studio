@@ -1,14 +1,12 @@
 import "server-only"
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { type IStorage, storageFor } from "@utils/server/storage"
 
 // Application Architecture || Define Vars
 // =======================================================================================
 // =======================================================================================
 // NOTE: Files are named by run id so a rerun never overwrites an earlier image
-// ↪ HOWEVER: On Vercel the only writable path is /tmp, which is per instance and wiped on cold start
-const DEFAULT_OUTPUTS_DIR = process.env.VERCEL ? "/tmp/tessel/outputs" : "storage/outputs"
-export const OUTPUTS_DIR = path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.OUTPUTS_DIR ?? DEFAULT_OUTPUTS_DIR)
+export const OUTPUTS_DIR = path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.OUTPUTS_DIR ?? "storage/outputs")
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/png": ".png",
@@ -21,6 +19,10 @@ const EXT_BY_MIME_REVERSE: Record<string, string> = Object.fromEntries(Object.en
 // Application Architecture || Define Functions
 // =======================================================================================
 // =======================================================================================
+function store(): IStorage {
+  return storageFor(OUTPUTS_DIR, "outputs/")
+}
+
 function safeSegment(seg: string): string {
   const clean = seg.replace(/[^a-z0-9-]/gi, "-").toLowerCase()
   if (!clean || clean === "." || clean === "..") throw new Error("Invalid output path segment")
@@ -50,29 +52,26 @@ function toRef(relPath: string, size: number): IOutputRef {
   }
 }
 
-function metaPath(relPath: string): string {
+function metaKey(relPath: string): string {
   const ext = path.extname(relPath)
-  return path.join(OUTPUTS_DIR, `${relPath.slice(0, -ext.length)}.json`)
+  return `${relPath.slice(0, -ext.length)}.json`
 }
 
-// NOTE: Path traversal guard
-function resolveInside(segments: string[]): string | null {
-  if (segments.length === 0 || segments.some((s) => !s || s === "." || s === "..")) return null
-  const full = path.resolve(OUTPUTS_DIR, ...segments)
-  return full.startsWith(`${OUTPUTS_DIR}${path.sep}`) ? full : null
+// NOTE: Path traversal guard; only image keys directly under a campaign folder are addressable
+function imageKey(segments: string[]): string | null {
+  if (segments.length !== 2 || segments.some((s) => !s || s === "." || s === ".." || s.includes("\\"))) return null
+  const key = segments.join("/")
+  return path.extname(key).toLowerCase() in EXT_BY_MIME_REVERSE ? key : null
 }
 
 // Application Architecture || Define Exports
 // =======================================================================================
 // =======================================================================================
 export async function saveOutput(loc: IOutputLocation, mimeType: string, data: Buffer): Promise<IOutputRef> {
-  const dirName = safeSegment(loc.campaignId)
-  const dir = path.join(OUTPUTS_DIR, dirName)
-  await mkdir(dir, { recursive: true })
   const ext = EXT_BY_MIME[mimeType] ?? ".png"
-  const file = `${baseName(loc)}${ext}`
-  await writeFile(path.join(dir, file), data)
-  return toRef(`${dirName}/${file}`, data.byteLength)
+  const key = `${safeSegment(loc.campaignId)}/${baseName(loc)}${ext}`
+  await store().write(key, data, mimeType)
+  return toRef(key, data.byteLength)
 }
 
 // NOTE: The un-composited render is kept beside the final file so derived variants start from a clean master
@@ -82,30 +81,23 @@ export function rawOutputPath(relPath: string): string {
 }
 
 export async function saveRawOutput(loc: IOutputLocation, mimeType: string, data: Buffer): Promise<void> {
-  const dirName = safeSegment(loc.campaignId)
-  await mkdir(path.join(OUTPUTS_DIR, dirName), { recursive: true })
   const ext = EXT_BY_MIME[mimeType] ?? ".png"
-  await writeFile(path.join(OUTPUTS_DIR, dirName, `${baseName(loc)}__raw${ext}`), data)
+  await store().write(`${safeSegment(loc.campaignId)}/${baseName(loc)}__raw${ext}`, data, mimeType)
 }
 
 export async function readOutput(segments: string[]): Promise<{ data: Buffer; mimeType: string } | null> {
-  const full = resolveInside(segments)
-  if (!full) return null
-  const ext = path.extname(full).toLowerCase()
-  if (!(ext in EXT_BY_MIME_REVERSE)) return null
-  try {
-    const data = await readFile(full)
-    return { data, mimeType: mimeForExt(ext) }
-  } catch {
-    return null
-  }
+  const key = imageKey(segments)
+  if (!key) return null
+  const file = await store().read(key)
+  return file ? { data: file.data, mimeType: mimeForExt(path.extname(key).toLowerCase()) } : null
 }
 
 export async function saveOutputMeta(ref: IOutputRef, meta: Omit<IOutputMeta, "image">): Promise<void> {
   const full: IOutputMeta = { ...meta, image: ref }
-  await writeFile(metaPath(ref.relPath), JSON.stringify(full, null, 2))
+  await store().write(metaKey(ref.relPath), Buffer.from(JSON.stringify(full, null, 2)), "application/json")
 }
 
+// NOTE: One listing confirms every sidecar's image still exists, so no per-file existence checks
 export async function listOutputs(campaignId: string): Promise<IOutputMeta[]> {
   let dirName: string
   try {
@@ -113,22 +105,16 @@ export async function listOutputs(campaignId: string): Promise<IOutputMeta[]> {
   } catch {
     return []
   }
-  const dir = path.join(OUTPUTS_DIR, dirName)
-  let entries: string[]
-  try {
-    entries = await readdir(dir)
-  } catch {
-    return []
-  }
+  const entries = await store().list(`${dirName}/`)
+  const present = new Set(entries.map((e) => e.key))
   const metas: IOutputMeta[] = []
   for (const entry of entries) {
-    if (path.extname(entry) !== ".json") continue
+    if (path.extname(entry.key) !== ".json") continue
     try {
-      const meta = JSON.parse(await readFile(path.join(dir, entry), "utf8")) as IOutputMeta
-      if (!meta?.jobId || !meta.image?.relPath) continue
-      const image = resolveInside(meta.image.relPath.split("/"))
-      if (!image) continue
-      await stat(image)
+      const file = await store().read(entry.key)
+      if (!file) continue
+      const meta = JSON.parse(file.data.toString("utf8")) as IOutputMeta
+      if (!meta?.jobId || !meta.image?.relPath || !present.has(meta.image.relPath)) continue
       metas.push(meta)
     } catch {}
   }
@@ -137,13 +123,12 @@ export async function listOutputs(campaignId: string): Promise<IOutputMeta[]> {
 }
 
 export async function readOutputMeta(segments: string[]): Promise<IOutputMeta | null> {
-  const full = resolveInside(segments)
-  if (!full) return null
-  const ext = path.extname(full).toLowerCase()
-  if (!(ext in EXT_BY_MIME_REVERSE)) return null
+  const key = imageKey(segments)
+  if (!key) return null
+  const file = await store().read(metaKey(key))
+  if (!file) return null
   try {
-    const raw = await readFile(`${full.slice(0, -ext.length)}.json`, "utf8")
-    return JSON.parse(raw) as IOutputMeta
+    return JSON.parse(file.data.toString("utf8")) as IOutputMeta
   } catch {
     return null
   }

@@ -261,3 +261,6 @@ ios/
 *.tgz
 *.sln
 *.sw?
+
+.vercel
+.env*

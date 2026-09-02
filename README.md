@@ -44,7 +44,7 @@ cp .env.example .env.local
 
 > ⚠️ A `429` from Gemini means billing is off for that key.
 
-On Vercel, set the same variable in the project settings. Nothing else is needed; outputs and uploads go to `/tmp` there (see Limitations).
+On Vercel, set `GEMINI_API_KEY` in the project settings and attach a public Blob store (Storage tab, Create Database, Blob, Connect to Project). Deployments then write outputs and uploads to Blob; local runs keep using the disk.
 
 ---
 
@@ -168,5 +168,5 @@ Each result also has a review page at `/results/...`.
 - The legal check is a word list. Misspellings get through.
 - Brand colors are prompted, not measured on the output.
 - A `.heic` logo uploads but fails at compositing. Use png/jpg/webp for the logo.
-- The hosted demo is demo-grade. Vercel functions can only write to `/tmp`, which is per instance and wiped on cold start, so results vanish on reload, uploads do not persist, and a ratio or locale variant can fail with "generate the parent image first" if it lands on a different instance. The proper fix is to move `utils/server/outputs.ts` and `utils/server/assets.ts` to object storage such as Vercel Blob.
+- On Vercel everything is stored in a public Blob store, so every output and upload also has a direct `*.public.blob.vercel-storage.com` URL.
 - All work product is public. There is no auth. Anyone who knows a campaign slug can list and open its results at `/api/outputs?campaign=<slug>` and `/results/...`, and every uploaded asset is served at `/api/assets/<name>`. Run it locally, or put it behind auth, for anything real.
