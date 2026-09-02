@@ -10,7 +10,7 @@ Brief in, campaign images out. Load a JSON/YAML brief, add a logo and reference 
 - **Dev**
   - [Live App](http://localhost:3000)
 - **Production**
-  - [Live App](https://tessel-genai.vercel.app) <sub>*update once deployed*</sub>
+  - [Live App](https://tessel-genai.vercel.app)
 
 ---
 
@@ -25,12 +25,10 @@ Brief in, campaign images out. Load a JSON/YAML brief, add a logo and reference 
 
 - [Next](https://nextjs.org/)
 - [React](https://react.dev/)
-- [Tailwind CSS](https://tailwindcss.com/)
 - [shadcn/ui](https://ui.shadcn.com/)
-- [Zod](https://zod.dev/)
 - [Gemini API](https://ai.google.dev/)
-- [sharp](https://sharp.pixelplumbing.com/)
-
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Zod](https://zod.dev/)
 ---
 
 ## 🌍 **Project Environment**
@@ -39,9 +37,10 @@ Brief in, campaign images out. Load a JSON/YAML brief, add a logo and reference 
 cp .env.example .env.local
 ```
 
-| Variable | Purpose |
-| --- | --- |
-| `GEMINI_API_KEY` | Gemini API key |
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Yes | Gemini API key |
+| `LEGAL_BLOCKLIST` | No | Extra prohibited words for the legal check, comma-separated. Profanity is built in. |
 
 > ⚠️ A `429` from Gemini means billing is off for that key.
 
@@ -154,7 +153,7 @@ Each result also has a review page at `/results/...`.
 - The first locale at the first ratio is the master. Other locales re-render with the master attached and only the text changes. Other ratios crop or pad the master; the model only paints the new bands.
 - The logo is composited from the file with sharp, never drawn by the model.
 - The form and the YAML are the same thing. Anything set in the UI exports back out.
-- Legal check runs in the API route. Every text field is scanned for profanity and restricted claims ("guaranteed", "clinically proven"); a hit gets a 422 before anything is generated. `LEGAL_BLOCKLIST` in `.env.local` adds words.
+- Legal check runs in the API route. Every text field is scanned for profanity; a hit gets a 422 before anything is generated. `LEGAL_BLOCKLIST` in `.env.local` adds words.
 - Brand check is by construction: the logo is always the real file, and the JSON sidecar records which assets were used or missing.
 
 ---

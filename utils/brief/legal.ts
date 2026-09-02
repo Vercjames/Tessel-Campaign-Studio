@@ -46,13 +46,7 @@ const PROFANITY = [
   "whore",
 ]
 
-// NOTE: Unsubstantiated or regulated marketing claims that legal review would strike from campaign copy
-const CLAIMS = ["guaranteed", "guarantee", "cure", "cures", "risk-free", "clinically proven", "fda approved", "doctor recommended", "#1"]
-
-const CATEGORIES: Array<{ category: TLegalCategory; terms: string[] }> = [
-  { category: "profanity", terms: PROFANITY },
-  { category: "claim", terms: CLAIMS },
-]
+const CATEGORIES: Array<{ category: TLegalCategory; terms: string[] }> = [{ category: "profanity", terms: PROFANITY }]
 
 // Application Architecture || Define Functions
 // =======================================================================================
@@ -118,7 +112,7 @@ function fields(brief: TCampaignBrief): Array<{ path: string; label: string; tex
 // =======================================================================================
 // NOTE: Every free-text field of the brief is checked; the first hit per field is reported with its path
 export function checkLegal(brief: TCampaignBrief, extraTerms: string[] = []): ILegalIssue[] {
-  const custom = extraTerms.map((t) => t.trim()).filter(Boolean)
+  const custom = extraTerms.map((t) => normalize(t.trim())).filter(Boolean)
   const lists = custom.length > 0 ? [...CATEGORIES, { category: "custom" as const, terms: custom }] : CATEGORIES
   const issues: ILegalIssue[] = []
   for (const field of fields(brief)) {
@@ -137,17 +131,19 @@ export function describeLegalIssues(issues: ILegalIssue[]): string {
 }
 
 // NOTE: Comma-separated words from the environment extend the built-in lists without a code change
+// ↪ CONTEXT: Terms are lowercased and stripped of quotes so `Fuck`, `"FUCK"` and `fuck` are the same entry
 export function extraLegalTerms(env: string | undefined): string[] {
-  return (env ?? "")
+  const terms = (env ?? "")
     .split(",")
-    .map((t) => t.trim())
+    .map((t) => normalize(t.trim().replace(/^["']+|["']+$/g, "")).trim())
     .filter(Boolean)
+  return Array.from(new Set(terms))
 }
 
 // Application Component || Define Typologies
 // =======================================================================================
 // =======================================================================================
-export type TLegalCategory = "profanity" | "claim" | "custom"
+export type TLegalCategory = "profanity" | "custom"
 
 export interface ILegalIssue {
   path: string

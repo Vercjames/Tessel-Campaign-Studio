@@ -1,4 +1,4 @@
-import { checkLegal, describeLegalIssues } from "@utils/brief/legal"
+import { checkLegal, describeLegalIssues, extraLegalTerms } from "@utils/brief/legal"
 import { parseBriefs } from "@utils/brief/parse"
 import { describe, expect, it } from "vitest"
 
@@ -60,15 +60,23 @@ describe("checkLegal", () => {
     expect(checkLegal(brief({ message: "SHÍT happens" }))[0]?.term).toBe("shit")
   })
 
-  it("flags restricted claims", () => {
-    const issues = checkLegal(brief({ message: "Guaranteed results, clinically proven" }))
-    expect(issues.map((i) => i.term)).toEqual(["guaranteed", "clinically proven"])
-    expect(issues[0].category).toBe("claim")
+  it("leaves marketing claims alone", () => {
+    expect(checkLegal(brief({ message: "Guaranteed results, clinically proven" }))).toEqual([])
   })
 
   it("takes extra terms", () => {
     const issues = checkLegal(brief({ message: "Try Acme today" }), ["acme"])
     expect(issues[0]).toMatchObject({ term: "acme", category: "custom" })
+  })
+
+  it("extra terms are case-insensitive both ways and reported lowercase", () => {
+    expect(checkLegal(brief({ message: "Try ACME today" }), ["Acme"])[0]?.term).toBe("acme")
+    expect(checkLegal(brief({ message: "so Fucking good" }), ["FUCK"]).map((i) => i.term)).toEqual(["fucking"])
+  })
+
+  it("parses the env blocklist", () => {
+    expect(extraLegalTerms(' "Acme", SHIT ,fuck, acme ,')).toEqual(["acme", "shit", "fuck"])
+    expect(extraLegalTerms(undefined)).toEqual([])
   })
 
   it("describes issues for people", () => {
