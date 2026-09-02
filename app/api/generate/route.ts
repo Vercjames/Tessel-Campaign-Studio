@@ -234,6 +234,8 @@ export async function POST(req: Request) {
     )
   } catch (err) {
     if (err instanceof GeminiError) return error(err.message, err.status)
+    // NOTE: Logged so hosted runtime logs show the cause, not just the 500
+    console.error(`[generate] ${jobId}`, err)
     return error(err instanceof Error ? err.message : "Generation failed", 500)
   }
 }

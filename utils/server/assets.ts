@@ -1,6 +1,6 @@
 import "server-only"
 import { createHash } from "node:crypto"
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { ASSET_NAME_PATTERN } from "@utils/brief/schema"
@@ -8,7 +8,13 @@ import { ASSET_NAME_PATTERN } from "@utils/brief/schema"
 // Application Architecture || Define Vars
 // =======================================================================================
 // =======================================================================================
-export const ASSETS_DIR = path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.ASSETS_DIR ?? "assets")
+// NOTE: The repo folder is read-only on Vercel, so the library moves to /tmp there and is seeded from the bundle
+// ↪ HOWEVER: /tmp is per instance and wiped on cold start, so uploads on Vercel do not persist
+const BUNDLED_ASSETS_DIR = path.resolve(/*turbopackIgnore: true*/ process.cwd(), "assets")
+const DEFAULT_ASSETS_DIR = process.env.VERCEL ? "/tmp/tessel/assets" : "assets"
+export const ASSETS_DIR = path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.ASSETS_DIR ?? DEFAULT_ASSETS_DIR)
+
+let seeded: Promise<void> | null = null
 
 const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
@@ -50,8 +56,34 @@ function isValidAssetName(name: string): boolean {
   return ASSET_NAME_PATTERN.test(name) && !name.includes("/") && !name.includes("\\")
 }
 
-async function ensureAssetsDir(): Promise<void> {
+// NOTE: Bundled assets are copied into a writable library once per process; existing files are never overwritten
+async function seedAssetsDir(): Promise<void> {
   await mkdir(ASSETS_DIR, { recursive: true })
+  if (ASSETS_DIR === BUNDLED_ASSETS_DIR) return
+  let entries: string[] = []
+  try {
+    entries = await readdir(BUNDLED_ASSETS_DIR)
+  } catch {
+    return
+  }
+  for (const name of entries) {
+    if (!mimeForName(name) || !isValidAssetName(name)) continue
+    const target = path.join(ASSETS_DIR, name)
+    try {
+      await stat(target)
+    } catch {
+      await copyFile(path.join(BUNDLED_ASSETS_DIR, name), target)
+    }
+  }
+}
+
+async function ensureAssetsDir(): Promise<void> {
+  if (!seeded)
+    seeded = seedAssetsDir().catch((err) => {
+      seeded = null
+      throw err
+    })
+  await seeded
 }
 
 export async function listAssets(): Promise<IAssetInfo[]> {
@@ -74,6 +106,7 @@ export async function listAssets(): Promise<IAssetInfo[]> {
 }
 
 export async function loadAsset(name: string): Promise<ILoadedAsset> {
+  await ensureAssetsDir()
   const full = assetPath(name)
   let data: Buffer
   try {

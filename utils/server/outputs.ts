@@ -6,7 +6,9 @@ import path from "node:path"
 // =======================================================================================
 // =======================================================================================
 // NOTE: Files are named by run id so a rerun never overwrites an earlier image
-export const OUTPUTS_DIR = path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.OUTPUTS_DIR ?? "storage/outputs")
+// ↪ HOWEVER: On Vercel the only writable path is /tmp, which is per instance and wiped on cold start
+const DEFAULT_OUTPUTS_DIR = process.env.VERCEL ? "/tmp/tessel/outputs" : "storage/outputs"
+export const OUTPUTS_DIR = path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.OUTPUTS_DIR ?? DEFAULT_OUTPUTS_DIR)
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/png": ".png",
