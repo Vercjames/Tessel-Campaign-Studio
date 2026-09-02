@@ -115,7 +115,7 @@ Notes:
 - All products land in one scene per ratio/locale.
 - `kind: composition` items describe the setting, not a product.
 - `message` is the only text drawn. Omit it for no text.
-- Images are filenames in `assets/`. Missing ones are skipped and the model works from the description.
+- Images are filenames in the asset library: the repo's `assets/` folder plus anything uploaded in the app (on Vercel, uploads live in Blob, not the repo). Missing ones are skipped and the model works from the description.
 
 ---
 

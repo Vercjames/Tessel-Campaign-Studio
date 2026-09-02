@@ -1,7 +1,7 @@
 import "server-only"
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { get, list, put } from "@vercel/blob"
+import { BlobNotFoundError, get, head, list, put } from "@vercel/blob"
 
 // Application Architecture || Define Vars
 // =======================================================================================
@@ -97,15 +97,27 @@ class BlobStorage implements IStorage {
     return `${this.prefix}${key}`
   }
 
+  // NOTE: Reading the bare blob URL goes through the CDN, which can still answer "not found" for a moment after
+  // ↪ a write and serves an overwritten file for up to a minute; the public store has no way to bypass that
+  // ↪ ERGO: The lookup goes through the API, and the bytes are fetched at a per-version URL the CDN has never cached
   async read(key: string): Promise<IStoredFile | null> {
-    const result = await get(this.key(key), { access: "public" })
+    let meta: Awaited<ReturnType<typeof head>>
+    try {
+      meta = await head(this.key(key))
+    } catch (err) {
+      if (err instanceof BlobNotFoundError) return null
+      throw err
+    }
+    const url = new URL(meta.url)
+    url.searchParams.set("v", meta.etag.replace(/"/g, ""))
+    const result = await get(url.toString(), { access: "public" })
     if (!result || result.statusCode !== 200) return null
     const data = await streamToBuffer(result.stream)
     return {
       data,
-      contentType: result.blob.contentType || mimeForKey(key),
-      size: result.blob.size ?? data.byteLength,
-      modifiedAt: result.blob.uploadedAt.toISOString(),
+      contentType: meta.contentType || result.blob.contentType || mimeForKey(key),
+      size: meta.size,
+      modifiedAt: meta.uploadedAt.toISOString(),
     }
   }
 
